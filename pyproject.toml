@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "purest"
+version = "0.1.0"
+description = "Minimal stdlib REST/WebSocket API harness with pluggable auth"
+authors = ["Jaroslaw Locchansky <locchansky@gmail.com>"]
+packages = [{include = "purest"}]
+readme = "README.md"
+license = "GPL-3.0-or-later"
+
+[tool.poetry.dependencies]
+python = ">3.10,<3.14"
+sqlalchemy = ">2.0,<2.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
