@@ -46,6 +46,40 @@ def test_login_unknown_user_and_bad_password_are_indistinguishable(sqlite_auth):
     assert b.login("alice", "password12") is LoginResult.SUCCESS
 
 
+def test_login_logs_distinct_failure_reasons(DeclarativeBaseFactory):
+    logs: list[str] = []
+
+    class Capture:
+        def info(self, msg):
+            logs.append(msg)
+
+    Base = DeclarativeBaseFactory()
+    provider = SqliteAuthProvider(":memory:")
+    create_auth_models(Base)
+    Base.metadata.create_all(provider.get_engine())
+    b = SqliteAuthBackend(
+        Base,
+        provider=provider,
+        token_ttl_min=60,
+        logger=Capture(),
+    )
+    assert b.register_user("alice", "password12") is True
+    logs.clear()
+
+    assert b.login("nobody", "x") is LoginResult.FAILED
+    assert any("no such user" in m for m in logs)
+    assert not any("incorrect password" in m for m in logs)
+
+    logs.clear()
+    assert b.login("alice", "wrong") is LoginResult.FAILED
+    assert any("incorrect password" in m for m in logs)
+    assert not any("no such user" in m for m in logs)
+
+    logs.clear()
+    assert b.login("alice", "password12") is LoginResult.SUCCESS
+    assert any("Login success" in m for m in logs)
+
+
 def test_password_stored_as_scrypt(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")

@@ -73,7 +73,7 @@ backend = SqliteAuthBackend(
 )
 ```
 
-Passwords are stored as salted **scrypt** (`hash_password` / `verify_password`). Optional `legacy_salt=` verifies old `sha512(password+salt)` hex digests and upgrades them on successful login. `login()` returns only `LoginResult.SUCCESS` or `LoginResult.FAILED` (no user-enumeration distinction). Usernames must be at least 4 characters (`MIN_USERNAME_LENGTH`); `register_user` rejects shorter names.
+Passwords are stored as salted **scrypt** (`hash_password` / `verify_password`). Optional `legacy_salt=` verifies old `sha512(password+salt)` hex digests and upgrades them on successful login. `login()` returns only `LoginResult.SUCCESS` or `LoginResult.FAILED` (no user-enumeration in the API); when a logger is configured, failures are logged distinctly as no-such-user vs incorrect-password. Usernames must be at least 4 characters (`MIN_USERNAME_LENGTH`); `register_user` rejects shorter names.
 
 `OdbcAuthProvider(connection_string, dialect_name=…)` covers any other ODBC DSN. `PostgresqlAuthProvider` mirrors the MySQL helper.
 

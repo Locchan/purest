@@ -49,13 +49,21 @@ class SqlAlchemyAuthBackend(AuthBackend):
     def login(self, username: str, password: str) -> LoginResult:
         with self._session_factory() as session:
             user = session.scalar(select(self._User).where(self._User.name == username))
-            stored = None if user is None else user.password_hash
-            if not verify_password_or_dummy(password, stored, legacy_salt=self._legacy_salt):
+            if user is None:
+                # Same work as a real check so timing does not leak existence.
+                verify_password_or_dummy(password, None, legacy_salt=self._legacy_salt)
+                self._log_info(f"Login failed for '{username}': no such user")
+                return LoginResult.FAILED
+            if not verify_password_or_dummy(
+                password, user.password_hash, legacy_salt=self._legacy_salt
+            ):
+                self._log_info(f"Login failed for '{username}': incorrect password")
                 return LoginResult.FAILED
             # Upgrade legacy hashes to scrypt on successful login.
             if needs_rehash(user.password_hash):
                 user.password_hash = hash_password(password)
                 session.commit()
+            self._log_info(f"Login success for '{username}'")
             return LoginResult.SUCCESS
 
     def validate_token(self, username: str, token: str) -> bool:
