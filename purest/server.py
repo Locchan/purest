@@ -91,15 +91,24 @@ class APIServer(BaseHTTPRequestHandler):
         self.wfile.flush()
 
     def _send_cors_headers(self):
-        origin = self.headers.get("Origin") or "*"
-        self.send_header("Access-Control-Allow-Origin", origin)
+        cfg = get_config()
+        allowed = cfg.cors_origins
+        request_origin = (self.headers.get("Origin") or "").strip()
+        if allowed == "*":
+            allow_origin = "*"
+        elif request_origin and request_origin in allowed:
+            allow_origin = request_origin
+        else:
+            allow_origin = None
+        if allow_origin is not None:
+            self.send_header("Access-Control-Allow-Origin", allow_origin)
         self.send_header(
             "Access-Control-Allow-Methods",
             "GET, POST, PUT, DELETE, UPDATE, OPTIONS",
         )
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Requested-With")
         self.send_header("Access-Control-Max-Age", "1728000")
-        if origin != "*":
+        if allow_origin is not None and allow_origin != "*":
             self.send_header("Access-Control-Allow-Credentials", "true")
             self.send_header("Vary", "Origin")
 

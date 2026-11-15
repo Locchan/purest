@@ -106,8 +106,42 @@ def test_http_get_post_404_options_query(run_api_server):
 
     status, headers, body = _options(rest, "/echo")
     assert status == 204
-    assert headers.get("Access-Control-Allow-Origin") == "http://example.test"
+    # Default cors_origins="*" — never reflect arbitrary Origin.
+    assert headers.get("Access-Control-Allow-Origin") == "*"
+    assert headers.get("Access-Control-Allow-Credentials") is None
     assert body == b""
+
+
+def test_http_cors_allowlist_and_reject(run_api_server):
+    class echo:
+        ENDP_PATH = "/cors"
+
+        @staticmethod
+        @api_endp
+        def impl_GET(headers):
+            return {"ok": True}
+
+    rest, _ = run_api_server(
+        [echo],
+        cors_origins=["https://hvd.locchan.dev", "http://localhost:5482"],
+    )
+
+    status, headers, _ = _options(rest, "/cors", origin="https://hvd.locchan.dev")
+    assert status == 204
+    assert headers.get("Access-Control-Allow-Origin") == "https://hvd.locchan.dev"
+    assert headers.get("Access-Control-Allow-Credentials") == "true"
+    assert headers.get("Vary") == "Origin"
+
+    status, headers, _ = _options(rest, "/cors", origin="https://evil.example")
+    assert status == 204
+    assert headers.get("Access-Control-Allow-Origin") is None
+    assert headers.get("Access-Control-Allow-Credentials") is None
+
+    status, headers, _ = _get(
+        rest, "/cors", headers={"Origin": "http://localhost:5482"}
+    )
+    assert status == 200
+    assert headers.get("Access-Control-Allow-Origin") == "http://localhost:5482"
 
 
 def test_http_malformed_json_and_oversized_body(run_api_server):

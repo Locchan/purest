@@ -13,4 +13,4 @@ Bump `pyproject.toml` `version` on every non-trivial commit.
 | **MINOR** | Minor breaking changes |
 | **PATCH** | Every other non-trivial commit |
 
-Prerelease forms like `1.0.0rc-N`: bump `MAJOR`/`MINOR`/`PATCH` the same way, or increment `rc-N` while staying on that prerelease line for small steps. Mention the new version in the commit message.
+Mention the new version in the commit message.

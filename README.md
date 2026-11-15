@@ -33,6 +33,8 @@ configure(
     auth_backend=my_auth_backend,
     feature_enabled=lambda name: name in enabled,
     rest_workers=4,  # max concurrent REST request threads
+    # "*" (default) or exact origin(s). Never reflects arbitrary Origin.
+    cors_origins="https://app.example",
 )
 
 @auth("PUR_CAP_ADMIN")

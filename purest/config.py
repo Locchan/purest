@@ -1,9 +1,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Sequence
 
 from purest.auth.identity import DEFAULT_AUTH_COOKIE_TOKEN, DEFAULT_AUTH_COOKIE_USER
+
+# "*" = any origin, no credentials. Otherwise an exact-origin allowlist.
+CorsOrigins = str | tuple[str, ...]
+
+
+def normalize_cors_origins(cors_origins: str | Sequence[str] | None) -> CorsOrigins:
+    """Normalize configure()/env input to "*" or a non-empty tuple of origins."""
+    if cors_origins is None:
+        return "*"
+    if isinstance(cors_origins, str):
+        parts = [p.strip() for p in cors_origins.split(",") if p.strip()]
+    else:
+        parts = [str(p).strip() for p in cors_origins if str(p).strip()]
+    if not parts or parts == ["*"]:
+        return "*"
+    if "*" in parts:
+        raise ValueError("cors_origins cannot mix '*' with specific origins")
+    return tuple(parts)
 
 
 class _NullLogger:
@@ -43,6 +61,8 @@ class AppConfig:
     # Session cookies read by @auth / auth_username (not Authorization header).
     auth_cookie_user: str = DEFAULT_AUTH_COOKIE_USER
     auth_cookie_token: str = DEFAULT_AUTH_COOKIE_TOKEN
+    # CORS: "*" (default) or exact origin allowlist. Never reflect arbitrary Origin.
+    cors_origins: CorsOrigins = "*"
 
 
 _CONFIG: AppConfig | None = None
@@ -63,6 +83,7 @@ def configure(
     auth_endpoint_prefix: str = "/auth/",
     auth_cookie_user: str = DEFAULT_AUTH_COOKIE_USER,
     auth_cookie_token: str = DEFAULT_AUTH_COOKIE_TOKEN,
+    cors_origins: str | Sequence[str] | None = "*",
 ) -> AppConfig:
     global _CONFIG
     if rest_workers < 1:
@@ -81,6 +102,7 @@ def configure(
         auth_endpoint_prefix=auth_endpoint_prefix,
         auth_cookie_user=auth_cookie_user,
         auth_cookie_token=auth_cookie_token,
+        cors_origins=normalize_cors_origins(cors_origins),
     )
     return _CONFIG
 
