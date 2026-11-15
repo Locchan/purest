@@ -12,6 +12,13 @@ poetry build && pip install dist/*.whl
 pip install 'purest[odbc]'
 ```
 
+Dev / tests:
+
+```bash
+poetry install --with dev
+poetry run pytest
+```
+
 Or as a path dependency / git submodule from a host project.
 
 ## Quick shape

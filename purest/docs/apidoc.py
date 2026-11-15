@@ -50,7 +50,7 @@ def generate_endpoint_fragment(anendpoint):
                 html += "</ul>"
                 has_params = True
 
-            if hasattr(anendpoint, "RESULT_EXAMPLE"):
+            if hasattr(anendpoint, "RESULT_EXAMPLE") and amethod in anendpoint.RESULT_EXAMPLE:
                 html += '<div class="section-title">Response example:</div><ul>'
                 html += f"<li><code>{anendpoint.RESULT_EXAMPLE[amethod]}</code></li>"
                 html += "</ul>"

@@ -15,6 +15,13 @@ pyodbc = { version = ">=5.0,<6", optional = true }
 [tool.poetry.extras]
 odbc = ["pyodbc"]
 
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0,<9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

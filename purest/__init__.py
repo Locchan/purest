@@ -1,9 +1,12 @@
 from purest.auth.backend import AuthBackend, LoginResult
 from purest.auth.hashing import hash_password
 from purest.config import configure, get_config
-from purest.decorators import api_endp, auth, feat_req, validate, websocket
 from purest.server import APIServer, WSServer, register_endpoints, serve
 from purest.websocket import WebSocket, is_websocket_upgrade
+
+# Import decorators after purest.websocket so the decorator name is not shadowed
+# by the websocket submodule in this package namespace.
+from purest.decorators import api_endp, auth, feat_req, validate, websocket
 
 __all__ = [
     "APIServer",
