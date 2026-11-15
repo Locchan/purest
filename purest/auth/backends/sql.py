@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Callable
 
+from sqlalchemy.engine import Engine
+
 from purest.auth.backends.provider import AuthProvider
+from purest.auth.policy import DEFAULT_ROOT_PASSWORD, PUR_CAP_ALL, PUR_CAP_BASIC_USER
 from purest.auth.sqlalchemy_backend import SqlAlchemyAuthBackend
 from purest.auth.sqlalchemy_models import GroupMixin, TokenMixin, UserMixin
 
@@ -57,9 +60,11 @@ class SqlAuthBackend(SqlAlchemyAuthBackend):
         provider: AuthProvider | None = None,
         legacy_salt: str | None = None,
         salt: str | None = None,
-        bypass_cap: str = "ALL",
+        bypass_cap: str = PUR_CAP_ALL,
         default_group_name: str = "default",
-        default_capabilities: str = "BU",
+        default_capabilities: str = PUR_CAP_BASIC_USER,
+        root_password: str = DEFAULT_ROOT_PASSWORD,
+        bootstrap: bool = True,
         logger=None,
     ):
         User, Group, Token = create_auth_models(Base)
@@ -67,6 +72,7 @@ class SqlAuthBackend(SqlAlchemyAuthBackend):
         self.Group = Group
         self.Token = Token
         self.provider = provider
+        self._engine_kwargs = {}
         factory = _resolve_session_factory(session_factory, provider)
         super().__init__(
             factory,
@@ -79,8 +85,20 @@ class SqlAuthBackend(SqlAlchemyAuthBackend):
             bypass_cap=bypass_cap,
             default_group_name=default_group_name,
             default_capabilities=default_capabilities,
+            root_password=root_password,
+            bootstrap=bootstrap,
             logger=logger,
         )
+
+    def get_engine(self) -> Engine:
+        """Return the SQLAlchemy Engine owned by the AuthProvider (ODBC-style handle)."""
+        if self.provider is None:
+            raise RuntimeError("No AuthProvider attached; construct SqlAuthBackend with provider=...")
+        return self.provider.get_engine()
+
+    def session_factory(self) -> Callable:
+        """Return the session factory used by this backend (same DB as auth)."""
+        return self._session_factory
 
 
 # Back-compat name used by early adopters of the MySQL-oriented helper.

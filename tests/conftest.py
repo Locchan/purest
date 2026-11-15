@@ -48,9 +48,9 @@ def sqlite_auth(DeclarativeBaseFactory):
         Base,
         provider=provider,
         token_ttl_min=60,
-        bypass_cap="ALL",
+        bypass_cap="PUR_CAP_ALL",
         default_group_name="default",
-        default_capabilities="BU",
+        default_capabilities="PUR_CAP_BASIC_USER",
     )
     return SimpleNamespace(Base=Base, provider=provider, backend=backend)
 
@@ -89,6 +89,8 @@ def run_api_server(free_ports):
     holder = {"thread": None, "error": None}
 
     def _start(modules, **configure_kwargs):
+        # Host tests usually register their own auth routes; opt in explicitly.
+        configure_kwargs.setdefault("builtin_auth_endpoints", False)
         configure(**configure_kwargs)
 
         def target():

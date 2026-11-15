@@ -35,6 +35,9 @@ class AppConfig:
     openapi_version: str = "1.0.0"
     # Max concurrent REST request threads (WebSocket pool stays separate).
     rest_workers: int = 4
+    # Builtin /auth/* user endpoints (login, create_user, remove, …).
+    builtin_auth_endpoints: bool = True
+    auth_endpoint_prefix: str = "/auth/"
 
 
 _CONFIG: AppConfig | None = None
@@ -51,6 +54,8 @@ def configure(
     openapi_title: str = "REST API",
     openapi_version: str = "1.0.0",
     rest_workers: int = 4,
+    builtin_auth_endpoints: bool = True,
+    auth_endpoint_prefix: str = "/auth/",
 ) -> AppConfig:
     global _CONFIG
     if rest_workers < 1:
@@ -65,6 +70,8 @@ def configure(
         openapi_title=openapi_title,
         openapi_version=openapi_version,
         rest_workers=rest_workers,
+        builtin_auth_endpoints=builtin_auth_endpoints,
+        auth_endpoint_prefix=auth_endpoint_prefix,
     )
     return _CONFIG
 

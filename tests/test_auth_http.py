@@ -59,7 +59,7 @@ def _auth_modules(backend):
         ENDP_PATH = "/user/register"
 
         @staticmethod
-        @auth("ADMIN")
+        @auth("PUR_CAP_ADMIN")
         @validate(require_creds)
         @api_endp
         def impl_POST(headers, data):
@@ -71,7 +71,7 @@ def _auth_modules(backend):
         ENDP_PATH = "/user/remove"
 
         @staticmethod
-        @auth("ADMIN")
+        @auth("PUR_CAP_ADMIN")
         @validate(require_username)
         @api_endp
         def impl_POST(headers, data):
@@ -83,7 +83,7 @@ def _auth_modules(backend):
         ENDP_PATH = "/user/whoami"
 
         @staticmethod
-        @auth("BU")
+        @auth("PUR_CAP_BASIC_USER")
         @api_endp
         def impl_GET(headers):
             # headers is email.message.Message
@@ -94,7 +94,7 @@ def _auth_modules(backend):
         ENDP_PATH = "/admin/ping"
 
         @staticmethod
-        @auth("ADMIN")
+        @auth("PUR_CAP_ADMIN")
         @api_endp
         def impl_GET(headers):
             return {"admin": True}
@@ -103,20 +103,10 @@ def _auth_modules(backend):
 
 
 def test_full_auth_lifecycle_http(run_api_server, sqlite_auth):
+    from purest.auth.policy import DEFAULT_ROOT_PASSWORD
+
     b = sqlite_auth.backend
-    # Seed an admin in a dedicated group so later "default" users stay BU-only.
-    assert b.register_user("root", "rootpass12")
-    with b._session_factory() as session:
-        from sqlalchemy import select
-
-        admin_group = b.Group(name="admins", capabilities="BU,ADMIN")
-        session.add(admin_group)
-        session.commit()
-        admin_group = session.scalar(select(b.Group).where(b.Group.name == "admins"))
-        root = session.scalar(select(b.User).where(b.User.name == "root"))
-        root.group = admin_group.id
-        session.commit()
-
+    # Bootstrapped root (capability "root") bypasses @auth checks like ALL.
     rest, _ = run_api_server(_auth_modules(b), auth_backend=b)
 
     # Login failure paths
@@ -126,7 +116,7 @@ def test_full_auth_lifecycle_http(run_api_server, sqlite_auth):
     status, body = _post(rest, "/user/auth", {"username": "root", "password": "wrong"})
     assert status == 401
 
-    status, body = _post(rest, "/user/auth", {"username": "root", "password": "rootpass12"})
+    status, body = _post(rest, "/user/auth", {"username": "root", "password": DEFAULT_ROOT_PASSWORD})
     assert status == 200
     root_token = body["token"]
     assert len(root_token) == 32
@@ -204,7 +194,7 @@ def test_auth_header_whitespace_tolerated(run_api_server, sqlite_auth):
         ENDP_PATH = "/who"
 
         @staticmethod
-        @auth("BU")
+        @auth("PUR_CAP_BASIC_USER")
         @api_endp
         def impl_GET(headers):
             return {"ok": True}

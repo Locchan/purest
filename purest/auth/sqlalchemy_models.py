@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -15,6 +15,7 @@ class UserMixin:
     name: Mapped[str] = mapped_column(String(16), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
     group: Mapped[int] = mapped_column(ForeignKey("api_group.id"))
+    loginable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), default=True)
 
 
 class TokenMixin:

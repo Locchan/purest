@@ -14,6 +14,8 @@ endpoints: dict = {}
 ws_endpoints: dict = {}
 _ws_listen_port: int | None = None
 
+_HTTP_METHODS = ("GET", "POST", "PUT", "DELETE", "UPDATE")
+
 
 def register_endpoints(modules) -> int:
     """Register endpoint modules. Returns count of registered method handlers."""
@@ -26,7 +28,7 @@ def register_endpoints(modules) -> int:
     registered = 0
     for endpoint_module in modules:
         try:
-            for amethod in ["GET", "POST"]:
+            for amethod in _HTTP_METHODS:
                 if amethod not in endpoints:
                     endpoints[amethod] = {}
                 if amethod not in ws_endpoints:
@@ -91,7 +93,10 @@ class APIServer(BaseHTTPRequestHandler):
     def _send_cors_headers(self):
         origin = self.headers.get("Origin") or "*"
         self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, DELETE, UPDATE, OPTIONS",
+        )
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With")
         self.send_header("Access-Control-Max-Age", "1728000")
         if origin != "*":
@@ -140,26 +145,34 @@ class APIServer(BaseHTTPRequestHandler):
         else:
             logger.debug("Data omitted: too big.")
 
-    def do_GET(self):
+    def _apply_real_ip(self):
+        ip_from_headers = self.headers.get("X-Real-IP")
+        if ip_from_headers is not None:
+            self.client_address = (ip_from_headers, self.client_address[1])
+
+    @staticmethod
+    def _query_dict(parsed) -> dict:
+        return {
+            key: values[0] if len(values) == 1 else values
+            for key, values in parse_qs(parsed.query, keep_blank_values=True).items()
+        }
+
+    def _dispatch_query_method(self, method: str):
+        """GET / PUT / DELETE / UPDATE: path match + optional query dict as 2nd arg."""
         cfg = get_config()
         logger = cfg.logger
         try:
-            ip_from_headers = self.headers.get("X-Real-IP")
-            if ip_from_headers is not None:
-                self.client_address = (ip_from_headers, self.client_address[1])
+            self._apply_real_ip()
             parsed = urlsplit(self.path)
             path = parsed.path
-            if path in ws_endpoints.get("GET", {}):
+            if method == "GET" and path in ws_endpoints.get("GET", {}):
                 port_hint = _ws_listen_port if _ws_listen_port is not None else "?"
                 self.error(426, f"This endpoint is a WebSocket. Connect to port {port_hint}.")
                 logger.info(f"[{self.client_address[0]}] - RQ: GET {path}: 426")
                 return
-            if path in endpoints.get("GET", {}):
-                query = {
-                    key: values[0] if len(values) == 1 else values
-                    for key, values in parse_qs(parsed.query, keep_blank_values=True).items()
-                }
-                fn = endpoints["GET"][path]
+            if path in endpoints.get(method, {}):
+                query = self._query_dict(parsed)
+                fn = endpoints[method][path]
                 if query:
                     endpoint_exec_result = fn(self.headers, query)
                 else:
@@ -167,38 +180,52 @@ class APIServer(BaseHTTPRequestHandler):
                 self._write_endpoint_result(path, endpoint_exec_result)
             else:
                 self.error(404, f"No such endpoint: '{path}'")
-                logger.info(f"RQ: GET {self.path}: 404")
+                logger.info(f"RQ: {method} {self.path}: 404")
         except Exception as e:
             try:
                 self.error(500, f"Server error: {e.__class__.__name__}")
             except Exception:
                 pass
-            logger.error(f"RQ: GET {self.path}: 500 ({e.__class__.__name__})")
+            logger.error(f"RQ: {method} {self.path}: 500 ({e.__class__.__name__})")
             logger.exception(e)
+
+    def do_GET(self):
+        self._dispatch_query_method("GET")
+
+    def do_PUT(self):
+        self._dispatch_query_method("PUT")
+
+    def do_DELETE(self):
+        self._dispatch_query_method("DELETE")
+
+    def do_UPDATE(self):
+        # Alias for PUT (update-in-place); same query-string contract.
+        self._dispatch_query_method("UPDATE")
 
     def do_POST(self):
         cfg = get_config()
         logger = cfg.logger
         try:
-            ip_from_headers = self.headers.get("X-Real-IP")
-            if ip_from_headers is not None:
-                self.client_address = (ip_from_headers, self.client_address[1])
-            if self.path in endpoints.get("POST", {}):
-                data_length = int(self.headers.get("Content-Length"))
+            self._apply_real_ip()
+            parsed = urlsplit(self.path)
+            path = parsed.path
+            if path in endpoints.get("POST", {}):
+                data_length = int(self.headers.get("Content-Length") or 0)
                 if data_length > cfg.max_data_len_bytes:
                     self.send_response(413)
                     self._send_cors_headers()
                     self.end_headers()
                     return
                 try:
-                    data = json.loads(self.rfile.read(data_length).decode("utf-8"))
+                    raw = self.rfile.read(data_length).decode("utf-8") if data_length else "{}"
+                    data = json.loads(raw)
                 except Exception:
                     self.error(400, "Malformed data")
                     return
-                endpoint_exec_result = endpoints["POST"][self.path](self.headers, data)
-                self._write_endpoint_result(self.path, endpoint_exec_result)
+                endpoint_exec_result = endpoints["POST"][path](self.headers, data)
+                self._write_endpoint_result(path, endpoint_exec_result)
             else:
-                self.error(404, f"No such endpoint: '{self.path}'")
+                self.error(404, f"No such endpoint: '{path}'")
                 logger.info(f"RQ: POST {self.path}: 404")
         except Exception as e:
             try:
@@ -213,13 +240,20 @@ class WSServer(APIServer):
     def do_POST(self):
         self.error(405, "WebSocket port accepts GET upgrades only.")
 
+    def do_PUT(self):
+        self.error(405, "WebSocket port accepts GET upgrades only.")
+
+    def do_DELETE(self):
+        self.error(405, "WebSocket port accepts GET upgrades only.")
+
+    def do_UPDATE(self):
+        self.error(405, "WebSocket port accepts GET upgrades only.")
+
     def do_GET(self):
         cfg = get_config()
         logger = cfg.logger
         try:
-            ip_from_headers = self.headers.get("X-Real-IP")
-            if ip_from_headers is not None:
-                self.client_address = (ip_from_headers, self.client_address[1])
+            self._apply_real_ip()
             real_ip = self.headers.get("X-Real-IP") or self.client_address[0]
             fn = ws_endpoints.get("GET", {}).get(self.path)
             if fn is None:
@@ -285,13 +319,33 @@ def serve(
     bind_host: str = "0.0.0.0",
     rest_handler=None,
     ws_handler=None,
+    builtin_auth_endpoints: bool | None = None,
 ):
-    """Register endpoints, optionally run on_start, then block on the REST server."""
+    """Register endpoints, optionally run on_start, then block on the REST server.
+
+    When builtin auth endpoints are enabled (config default True, overridable via
+    ``builtin_auth_endpoints=``), prepends purest's ``/auth/*`` user harness
+    (prefix from ``auth_endpoint_prefix``, default ``/auth/``).
+    """
     global _ws_listen_port
     cfg = get_config()
     logger = cfg.logger
     logger.info("Initializing REST API...")
-    register_endpoints(modules)
+    all_modules = list(modules or [])
+    use_builtin = (
+        cfg.builtin_auth_endpoints if builtin_auth_endpoints is None else builtin_auth_endpoints
+    )
+    if use_builtin:
+        from purest.auth.endpoints import build_auth_endpoints
+
+        auth_modules = build_auth_endpoints(cfg.auth_endpoint_prefix)
+        logger.info(
+            "Registering builtin auth endpoints under %s (%d handlers)",
+            cfg.auth_endpoint_prefix,
+            len(auth_modules),
+        )
+        all_modules = auth_modules + all_modules
+    register_endpoints(all_modules)
     _ws_listen_port = ws_port
     if on_start is not None:
         on_start()

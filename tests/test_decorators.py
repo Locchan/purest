@@ -140,12 +140,12 @@ def test_auth_decorator_matrix(configured_sqlite_auth):
     assert backend.register_user("alice", "password12")
     token = backend.issue_token("alice")
 
-    @auth("BU")
+    @auth("PUR_CAP_BASIC_USER")
     @api_endp
     def need_bu(headers):
         return {"hi": True}
 
-    @auth("ADMIN")
+    @auth("PUR_CAP_ADMIN")
     @api_endp
     def need_admin(headers):
         return {"admin": True}
@@ -173,7 +173,7 @@ def test_auth_decorator_matrix(configured_sqlite_auth):
 def test_auth_without_backend_configured():
     configure(auth_backend=None)
 
-    @auth("BU")
+    @auth("PUR_CAP_BASIC_USER")
     @api_endp
     def impl(headers):
         return {}

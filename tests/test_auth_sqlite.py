@@ -27,7 +27,7 @@ def test_register_login_token_happy_path(sqlite_auth):
     assert len(token) == 32
     assert all(c in "0123456789abcdef" for c in token)
     assert b.validate_token("alice", token) is True
-    assert b.check_capability("alice", "BU") is True
+    assert b.check_capability("alice", "PUR_CAP_BASIC_USER") is True
 
 
 def test_register_duplicate_returns_false(sqlite_auth):
@@ -104,11 +104,11 @@ def test_legacy_sha512_login_upgrades_hash(DeclarativeBaseFactory):
         legacy_salt=legacy_salt,
     )
     with b._session_factory() as session:
-        group = b.Group(name="default", capabilities="BU")
+        group = b.Group(name="default", capabilities="PUR_CAP_BASIC_USER")
         session.add(group)
         session.commit()
         group = session.scalar(select(b.Group).where(b.Group.name == "default"))
-        session.add(b.User(name="alice", password_hash=legacy, group=group.id))
+        session.add(b.User(name="alice", password_hash=legacy, group=group.id, loginable=True))
         session.commit()
 
     assert needs_rehash(legacy) is True
@@ -121,14 +121,14 @@ def test_legacy_sha512_login_upgrades_hash(DeclarativeBaseFactory):
     assert b.login("alice", "password12") is LoginResult.SUCCESS
 
 
-def test_default_group_created_with_default_capabilities(sqlite_auth):
+def test_register_creates_personal_group_with_default_capabilities(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
     with b._session_factory() as session:
         user = session.scalar(select(b.User).where(b.User.name == "alice"))
         group = session.scalar(select(b.Group).where(b.Group.id == user.group))
-        assert group.name == "default"
-        assert group.capabilities == "BU"
+        assert group.name == "alice"
+        assert group.capabilities == "PUR_CAP_BASIC_USER"
 
 
 def test_validate_token_rejects_unknown_user_token_mismatch_and_garbage(sqlite_auth):
@@ -178,21 +178,21 @@ def test_short_ttl_expires_quickly(DeclarativeBaseFactory):
 def test_check_capability_admin_and_bypass(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
-    assert b.check_capability("alice", "BU") is True
-    assert b.check_capability("alice", "ADMIN") is False
-    assert b.check_capability("nobody", "BU") is False
+    assert b.check_capability("alice", "PUR_CAP_BASIC_USER") is True
+    assert b.check_capability("alice", "PUR_CAP_ADMIN") is False
+    assert b.check_capability("nobody", "PUR_CAP_BASIC_USER") is False
 
     with b._session_factory() as session:
-        group = session.scalar(select(b.Group).where(b.Group.name == "default"))
-        group.capabilities = "BU,ADMIN"
+        group = session.scalar(select(b.Group).where(b.Group.name == "alice"))
+        group.capabilities = "PUR_CAP_BASIC_USER,PUR_CAP_ADMIN"
         session.commit()
-    assert b.check_capability("alice", "ADMIN") is True
+    assert b.check_capability("alice", "PUR_CAP_ADMIN") is True
 
     with b._session_factory() as session:
-        group = session.scalar(select(b.Group).where(b.Group.name == "default"))
-        group.capabilities = "ALL"
+        group = session.scalar(select(b.Group).where(b.Group.name == "alice"))
+        group.capabilities = "PUR_CAP_ALL"
         session.commit()
-    assert b.check_capability("alice", "ADMIN") is True
+    assert b.check_capability("alice", "PUR_CAP_ADMIN") is True
     assert b.check_capability("alice", "ANYTHING") is True
 
 
@@ -210,13 +210,13 @@ def test_custom_bypass_cap_and_default_capabilities(DeclarativeBaseFactory):
     )
     b.register_user("alice", "password12")
     assert b.check_capability("alice", "READER") is True
-    assert b.check_capability("alice", "ADMIN") is False
+    assert b.check_capability("alice", "PUR_CAP_ADMIN") is False
 
     with b._session_factory() as session:
-        group = session.scalar(select(b.Group).where(b.Group.name == "default"))
+        group = session.scalar(select(b.Group).where(b.Group.name == "alice"))
         group.capabilities = "SUPER"
         session.commit()
-    assert b.check_capability("alice", "ADMIN") is True
+    assert b.check_capability("alice", "PUR_CAP_ADMIN") is True
 
 
 def test_remove_user_invalidates_tokens_and_blocks_login(sqlite_auth):
@@ -269,16 +269,71 @@ def test_session_factory_escape_hatch(DeclarativeBaseFactory):
     assert b.login("alice", "password12") is LoginResult.SUCCESS
 
 
-def test_register_reuses_existing_default_group(sqlite_auth):
+def test_register_creates_distinct_personal_groups(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
     b.register_user("bobby", "password34")
     with b._session_factory() as session:
         groups = list(session.scalars(select(b.Group)).all())
-        assert len(groups) == 1
+        assert {g.name for g in groups} == {"root", "alice", "bobby"}
         alice = session.scalar(select(b.User).where(b.User.name == "alice"))
         bob = session.scalar(select(b.User).where(b.User.name == "bobby"))
-        assert alice.group == bob.group == groups[0].id
+        alice_g = session.scalar(select(b.Group).where(b.Group.name == "alice"))
+        bob_g = session.scalar(select(b.Group).where(b.Group.name == "bobby"))
+        assert alice.group == alice_g.id
+        assert bob.group == bob_g.id
+        assert alice.group != bob.group
+
+
+def test_bootstrap_creates_root_user_and_group(sqlite_auth):
+    from purest.auth.policy import (
+        PUR_CAP_CREATE_USER,
+        DEFAULT_ROOT_PASSWORD,
+        PUR_CAP_ROOT,
+        ROOT_GROUP_CAPABILITIES,
+        ROOT_GROUP_NAME,
+        ROOT_USERNAME,
+    )
+
+    b = sqlite_auth.backend
+    with b._session_factory() as session:
+        root_group = session.scalar(select(b.Group).where(b.Group.name == ROOT_GROUP_NAME))
+        root_user = session.scalar(select(b.User).where(b.User.name == ROOT_USERNAME))
+        assert root_group is not None
+        assert root_group.capabilities == ROOT_GROUP_CAPABILITIES
+        assert PUR_CAP_ROOT in root_group.capabilities.split(",")
+        assert PUR_CAP_CREATE_USER in root_group.capabilities.split(",")
+        assert root_user is not None
+        assert root_user.group == root_group.id
+        assert root_user.loginable is True
+    assert b.login(ROOT_USERNAME, DEFAULT_ROOT_PASSWORD) is LoginResult.SUCCESS
+    assert b.check_capability(ROOT_USERNAME, "ANYTHING") is True
+    assert b.check_capability(ROOT_USERNAME, PUR_CAP_CREATE_USER) is True
+    assert b.register_user(ROOT_USERNAME, "otherpass99") is False
+    assert b.remove_user(ROOT_USERNAME) is False
+
+
+def test_loginable_false_blocks_login_and_tokens(sqlite_auth):
+    b = sqlite_auth.backend
+    assert b.register_user("alice", "password12", loginable=True) is True
+    assert b.login("alice", "password12") is LoginResult.SUCCESS
+    token = b.issue_token("alice")
+    assert b.validate_token("alice", token) is True
+
+    with b._session_factory() as session:
+        user = session.scalar(select(b.User).where(b.User.name == "alice"))
+        user.loginable = False
+        session.commit()
+
+    assert b.login("alice", "password12") is LoginResult.FAILED
+    assert b.validate_token("alice", token) is False
+
+
+def test_get_engine_from_provider(sqlite_auth):
+    b = sqlite_auth.backend
+    engine = b.get_engine()
+    assert engine is sqlite_auth.provider.get_engine()
+    assert engine is b.provider.get_engine()
 
 
 def test_login_result_int_values():
@@ -299,8 +354,8 @@ def test_capability_bypass_is_exact_token_not_substring(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
     with b._session_factory() as session:
-        group = session.scalar(select(b.Group).where(b.Group.name == "default"))
-        group.capabilities = "FALL"
+        group = session.scalar(select(b.Group).where(b.Group.name == "alice"))
+        group.capabilities = "XPUR_CAP_ALLX"
         session.commit()
-    assert b.check_capability("alice", "ADMIN") is False
-    assert b.check_capability("alice", "FALL") is True
+    assert b.check_capability("alice", "PUR_CAP_ADMIN") is False
+    assert b.check_capability("alice", "XPUR_CAP_ALLX") is True

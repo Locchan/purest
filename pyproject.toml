@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "purest"
-version = "0.1.0"
+version = "1.0.0rc-0"
 description = "Minimal stdlib REST/WebSocket API harness with pluggable auth"
 authors = ["Jaroslaw Locchansky <locchansky@gmail.com>"]
 packages = [{include = "purest"}]

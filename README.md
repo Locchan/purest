@@ -35,7 +35,7 @@ configure(
     rest_workers=4,  # max concurrent REST request threads
 )
 
-@auth("ADMIN")
+@auth("PUR_CAP_ADMIN")
 @api_endp
 def impl_POST(headers, data):
     return {"ok": True}

@@ -27,9 +27,9 @@ class MysqlAuthBackend(SqlAuthBackend):
         provider: AuthProvider | None = None,
         legacy_salt: str | None = None,
         salt: str | None = None,
-        bypass_cap: str = "ALL",
+        bypass_cap: str = "PUR_CAP_ALL",
         default_group_name: str = "default",
-        default_capabilities: str = "BU",
+        default_capabilities: str = "PUR_CAP_BASIC_USER",
         logger=None,
     ):
         super().__init__(

@@ -186,7 +186,7 @@ def test_http_auth_and_feature_gates(run_api_server, sqlite_auth):
         ENDP_PATH = "/secret"
 
         @staticmethod
-        @auth("BU")
+        @auth("PUR_CAP_BASIC_USER")
         @api_endp
         def impl_GET(headers):
             return {"secret": True}
@@ -195,7 +195,7 @@ def test_http_auth_and_feature_gates(run_api_server, sqlite_auth):
         ENDP_PATH = "/admin"
 
         @staticmethod
-        @auth("ADMIN")
+        @auth("PUR_CAP_ADMIN")
         @api_endp
         def impl_GET(headers):
             return {"admin": True}
@@ -294,3 +294,49 @@ def test_http_rest_is_concurrent(run_api_server):
         futures = [pool.submit(one) for _ in range(3)]
         statuses = [f.result(timeout=5) for f in as_completed(futures)]
     assert statuses == [200, 200, 200]
+
+
+def _request(port, method, path, headers=None):
+    conn = HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.request(method, path, headers=headers or {})
+    resp = conn.getresponse()
+    body = resp.read()
+    conn.close()
+    return resp.status, json.loads(body) if body else {}
+
+
+def test_http_put_update_delete(run_api_server):
+    store = {"v": "0"}
+
+    class item:
+        ENDP_PATH = "/item"
+
+        @staticmethod
+        @api_endp
+        def impl_PUT(headers, query=None):
+            store["v"] = (query or {}).get("value", "")
+            return {"value": store["v"]}
+
+        @staticmethod
+        @api_endp
+        def impl_UPDATE(headers, query=None):
+            store["v"] = (query or {}).get("value", "")
+            return {"value": store["v"], "via": "UPDATE"}
+
+        @staticmethod
+        @api_endp
+        def impl_DELETE(headers, query=None):
+            store["v"] = None
+            return {"deleted": True}
+
+    rest, _ = run_api_server([item])
+    status, body = _request(rest, "PUT", "/item?value=one")
+    assert status == 200
+    assert body == {"value": "one"}
+    status, body = _request(rest, "UPDATE", "/item?value=two")
+    assert status == 200
+    assert body == {"value": "two", "via": "UPDATE"}
+    status, body = _request(rest, "DELETE", "/item")
+    assert status == 200
+    assert body == {"deleted": True}
+    assert store["v"] is None
