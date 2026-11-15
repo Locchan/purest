@@ -34,3 +34,5 @@ serve(rest_port=5476, ws_port=5478, modules=[...])
 ```
 
 SQLAlchemy helpers (`UserMixin` / `GroupMixin` / `TokenMixin`, `SqlAlchemyAuthBackend`) are optional; supply your own `AuthBackend` if you prefer.
+
+For the MySQL `api_user` / `api_group` / `api_token` schema (as used by LoRaD), use `MysqlAuthBackend(session_factory, Base, salt=..., token_ttl_min=...)`. It binds the tables onto your `DeclarativeBase` via `create_mysql_auth_models`.
