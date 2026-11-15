@@ -236,6 +236,48 @@ def test_remove_user_invalidates_tokens_and_blocks_login(sqlite_auth):
         assert session.scalar(select(b.User).where(b.User.name == "alice")) is None
 
 
+def test_set_password_expires_all_tokens(sqlite_auth):
+    b = sqlite_auth.backend
+    b.register_user("alice", "password12")
+    t1 = b.issue_token("alice")
+    t2 = b.issue_token("alice")
+    assert b.set_password("alice", "newpass99") is True
+    assert b.validate_token("alice", t1) is False
+    assert b.validate_token("alice", t2) is False
+    assert b.login("alice", "password12") is LoginResult.FAILED
+    assert b.login("alice", "newpass99") is LoginResult.SUCCESS
+    with b._session_factory() as session:
+        assert session.scalar(select(b.Token).where(b.Token.token == t1)) is None
+        assert session.scalar(select(b.Token).where(b.Token.token == t2)) is None
+
+
+def test_set_password_rejects_short_password(sqlite_auth):
+    b = sqlite_auth.backend
+    b.register_user("alice", "password12")
+    assert b.set_password("alice", "short") is False
+    assert b.login("alice", "password12") is LoginResult.SUCCESS
+
+
+def test_expire_tokens(sqlite_auth):
+    b = sqlite_auth.backend
+    b.register_user("alice", "password12")
+    t1 = b.issue_token("alice")
+    assert b.expire_tokens("alice") == 1
+    assert b.validate_token("alice", t1) is False
+    assert b.expire_tokens("missing") == 0
+
+
+def test_get_capabilities(sqlite_auth):
+    b = sqlite_auth.backend
+    b.register_user("alice", "password12")
+    caps = b.get_capabilities("alice")
+    assert caps == ["PUR_CAP_BASIC_USER"]
+    assert b.get_capabilities("missing") is None
+    root_caps = b.get_capabilities("root")
+    assert "PUR_CAP_ROOT" in root_caps
+    assert "PUR_CAP_CREATE_USER" in root_caps
+
+
 def test_multiple_tokens_per_user(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")

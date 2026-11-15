@@ -18,6 +18,7 @@ from purest.auth.policy import (
     ROOT_GROUP_CAPABILITIES,
     ROOT_GROUP_NAME,
     ROOT_USERNAME,
+    is_valid_password,
     is_valid_username,
     merge_capabilities,
 )
@@ -169,6 +170,28 @@ class SqlAlchemyAuthBackend(AuthBackend):
             user = session.scalar(select(self._User).where(self._User.name == username))
             return None if user is None else user.group
 
+    def get_capabilities(self, username: str) -> list[str] | None:
+        with self._session_factory() as session:
+            user = session.scalar(select(self._User).where(self._User.name == username))
+            if user is None:
+                return None
+            group = session.scalar(select(self._Group).where(self._Group.id == user.group))
+            if group is None or group.capabilities is None:
+                return []
+            return [c.strip() for c in group.capabilities.split(",") if c.strip()]
+
+    def expire_tokens(self, username: str) -> int:
+        """Delete all tokens for ``username``. Returns how many rows were removed."""
+        with self._session_factory() as session:
+            user_obj = session.scalar(select(self._User).where(self._User.name == username))
+            if user_obj is None:
+                return 0
+            res = session.execute(delete(self._Token).where(self._Token.user == user_obj.id))
+            session.commit()
+            count = int(res.rowcount or 0)
+            self._log_info(f"Expired {count} token(s) for '{username}'")
+            return count
+
     def issue_token(self, username: str) -> str:
         token_str = secrets.token_hex(16)
         with self._session_factory() as session:
@@ -241,16 +264,18 @@ class SqlAlchemyAuthBackend(AuthBackend):
             return True
 
     def set_password(self, username: str, password: str) -> bool:
-        if not password:
+        if not is_valid_password(password):
             return False
         with self._session_factory() as session:
             user_obj = session.scalar(select(self._User).where(self._User.name == username))
             if user_obj is None:
                 return False
             user_obj.password_hash = hash_password(password)
-            session.execute(delete(self._Token).where(self._Token.user == user_obj.id))
+            res = session.execute(delete(self._Token).where(self._Token.user == user_obj.id))
             session.commit()
-            self._log_info(f"Password updated for '{username}' (tokens invalidated)")
+            self._log_info(
+                f"Password updated for '{username}' (expired {int(res.rowcount or 0)} token(s))"
+            )
             return True
 
     def list_users(self) -> list[dict]:

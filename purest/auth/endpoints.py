@@ -135,13 +135,16 @@ def build_auth_endpoints(
     class whoami:
         ENDP_PATH = f"{p}whoami"
         LOGIN_REQUIRED = True
-        DOCSTRING = {"GET": "Return the authenticated username."}
+        DOCSTRING = {"GET": "Return the authenticated username and capabilities."}
 
         @staticmethod
         @auth(user_cap)
         @api_endp
         def impl_GET(headers):
-            return {"whoami": auth_username(headers)}
+            backend = _backend()
+            username = auth_username(headers)
+            caps = backend.get_capabilities(username) or []
+            return {"whoami": username, "capabilities": caps}
 
     class users:
         ENDP_PATH = f"{p}users"
@@ -185,7 +188,10 @@ def build_auth_endpoints(
     class set_password:
         ENDP_PATH = f"{p}set_password"
         LOGIN_REQUIRED = True
-        DOCSTRING = {"POST": "Set a user's password (admin, or self)."}
+        DOCSTRING = {
+            "POST": "Set a user's password (self, or PUR_CAP_ADMIN for any user). "
+            "Expires all of that user's tokens."
+        }
         REQUIRED_FIELDS = {"POST": ["username", "password"]}
 
         @staticmethod
@@ -208,7 +214,7 @@ def build_auth_endpoints(
             if caller != target and not backend.check_capability(caller, admin_cap):
                 return (403, {"error": "Insufficient permissions"})
             if backend.set_password(target, data["password"]):
-                return {"success": True}
+                return {"success": True, "tokens_expired": True}
             return (404, {"error": f"User {target} not found."})
 
     return [login, create_user, remove, whoami, users, set_loginable, set_password]
