@@ -8,6 +8,8 @@ No FastAPI/Flask. Host apps register endpoint modules (`ENDP_PATH`, `impl_GET` /
 
 ```bash
 poetry build && pip install dist/*.whl
+# optional ODBC providers (MySQL / PostgreSQL via pyodbc):
+pip install 'purest[odbc]'
 ```
 
 Or as a path dependency / git submodule from a host project.
@@ -33,6 +35,39 @@ def impl_POST(headers, data):
 serve(rest_port=5476, ws_port=5478, modules=[...])
 ```
 
-SQLAlchemy helpers (`UserMixin` / `GroupMixin` / `TokenMixin`, `SqlAlchemyAuthBackend`) are optional; supply your own `AuthBackend` if you prefer.
+## Auth SQL backends
 
-For the MySQL `api_user` / `api_group` / `api_token` schema, use `MysqlAuthBackend(session_factory, Base, salt=..., token_ttl_min=...)`. It binds the tables onto your `DeclarativeBase` via `create_mysql_auth_models`.
+Portable `api_user` / `api_group` / `api_token` schema via `SqlAuthBackend` (also `MysqlAuthBackend`, `PostgresqlAuthBackend`, `SqliteAuthBackend` — same schema, different intended store).
+
+Connections use an ODBC-style `AuthProvider` (DBAPI `connect()` + SQLAlchemy dialect). Auth queries stay generic.
+
+```python
+from sqlalchemy.orm import DeclarativeBase
+from purest.auth import MysqlAuthBackend, MysqlAuthProvider, SqliteAuthBackend, SqliteAuthProvider
+
+class Base(DeclarativeBase):
+    pass
+
+# Own the connection (MySQL ODBC driver required for MysqlAuthProvider):
+backend = MysqlAuthBackend(
+    Base,
+    provider=MysqlAuthProvider("127.0.0.1", "appdb", "user", "secret"),
+    salt="…",
+    token_ttl_min=1440,
+)
+
+# Or pass a host session factory (no provider):
+backend = MysqlAuthBackend(Base, session_factory=my_session_factory, salt="…", token_ttl_min=1440)
+
+# SQLite (stdlib sqlite3, same creator pattern):
+backend = SqliteAuthBackend(
+    Base,
+    provider=SqliteAuthProvider("auth.db"),
+    salt="…",
+    token_ttl_min=1440,
+)
+```
+
+`OdbcAuthProvider(connection_string, dialect_name=…)` covers any other ODBC DSN. `PostgresqlAuthProvider` mirrors the MySQL helper.
+
+SQLAlchemy mixins / `SqlAlchemyAuthBackend` remain available if you bring your own models.
