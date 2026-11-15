@@ -50,7 +50,7 @@ def configure(
     debug_quiet_paths: list[str] | None = None,
     openapi_title: str = "REST API",
     openapi_version: str = "1.0.0",
-    rest_workers: int = 32,
+    rest_workers: int = 4,
 ) -> AppConfig:
     global _CONFIG
     if rest_workers < 1:

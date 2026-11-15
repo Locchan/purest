@@ -68,7 +68,7 @@ class ThreadingWSServer(NamedThreadingMixIn, HTTPServer):
 class ThreadingRESTServer(NamedThreadingMixIn, HTTPServer):
     daemon_threads = True
     thread_prefix = "REST#"
-    max_workers = 32
+    max_workers = 4
 
 
 class APIServer(BaseHTTPRequestHandler):
