@@ -227,14 +227,12 @@ def test_token_date_gen_timezone_aware_roundtrip(sqlite_auth):
         assert row.date_gen.replace(tzinfo=ZoneInfo("UTC")) <= datetime.datetime.now(datetime.timezone.utc)
 
 
-def test_capability_substring_bypass_behavior(sqlite_auth):
-    """Bypass check is a substring of the raw capabilities string (historical)."""
+def test_capability_bypass_is_exact_token_not_substring(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
     with b._session_factory() as session:
         group = session.scalar(select(b.Group).where(b.Group.name == "default"))
-        group.capabilities = "FALL"  # contains "ALL" as substring? "FALL" has "ALL"... yes "ALL" in "FALL"
+        group.capabilities = "FALL"  # must not match bypass_cap "ALL"
         session.commit()
-    # "ALL" in "FALL" is True in Python
-    assert "ALL" in "FALL"
-    assert b.check_capability("alice", "ADMIN") is True
+    assert b.check_capability("alice", "ADMIN") is False
+    assert b.check_capability("alice", "FALL") is True

@@ -48,7 +48,8 @@ class SqlAlchemyAuthBackend(AuthBackend):
             user = session.scalar(select(self._User).where(self._User.name == username))
             if user is None:
                 return LoginResult.NO_SUCH_USER
-            if user.password_hash == hash_password(password, self._salt):
+            candidate = hash_password(password, self._salt)
+            if secrets.compare_digest(user.password_hash, candidate):
                 return LoginResult.SUCCESS
             return LoginResult.BAD_PASSWORD
 
@@ -61,6 +62,9 @@ class SqlAlchemyAuthBackend(AuthBackend):
             if token_obj is None:
                 return False
             if token_obj.user != user_obj.id:
+                return False
+            # Constant-time compare even though DB already filtered by equality.
+            if not secrets.compare_digest(token_obj.token, token):
                 return False
             expires = token_obj.date_gen.replace(tzinfo=ZoneInfo("UTC")) + datetime.timedelta(
                 minutes=self._token_ttl_min
@@ -79,10 +83,9 @@ class SqlAlchemyAuthBackend(AuthBackend):
             ).capabilities
             if existing_caps is None:
                 return False
-            # Preserve historical substring check for the bypass capability.
-            if self._bypass_cap in existing_caps:
+            caps = [c.strip() for c in existing_caps.split(",") if c.strip()]
+            if self._bypass_cap in caps:
                 return True
-            caps = existing_caps.split(",")
             return capability in caps
 
     def issue_token(self, username: str) -> str:
