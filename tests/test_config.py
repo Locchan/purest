@@ -15,6 +15,7 @@ def test_configure_sets_fields():
         openapi_title="T",
         openapi_version="9.9.9",
         auth_backend=object(),
+        rest_workers=8,
     )
     assert cfg is get_config()
     assert get_config().max_data_len_bytes == 123
@@ -25,6 +26,14 @@ def test_configure_sets_fields():
     assert get_config().openapi_title == "T"
     assert get_config().openapi_version == "9.9.9"
     assert get_config().auth_backend is not None
+    assert get_config().rest_workers == 8
+
+
+def test_configure_rejects_non_positive_rest_workers():
+    import pytest
+
+    with pytest.raises(ValueError, match="rest_workers"):
+        configure(rest_workers=0)
 
 
 def test_get_config_defaults_when_unconfigured():

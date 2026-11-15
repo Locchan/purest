@@ -32,6 +32,7 @@ configure(
     server_version="MyApp API v1",
     auth_backend=my_auth_backend,
     feature_enabled=lambda name: name in enabled,
+    rest_workers=32,  # max concurrent REST request threads
 )
 
 @auth("ADMIN")

@@ -267,3 +267,30 @@ def test_http_binary_response(run_api_server):
     # Content-type may be application/octet-stream
     ct = headers.get("Content-type") or headers.get("Content-Type")
     assert ct == "application/octet-stream"
+
+
+def test_http_rest_is_concurrent(run_api_server):
+    """Three overlapping GETs must all enter the handler (requires threaded REST)."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    barrier = threading.Barrier(3, timeout=5)
+
+    class slow:
+        ENDP_PATH = "/slow"
+
+        @staticmethod
+        @api_endp
+        def impl_GET(headers):
+            barrier.wait()
+            return {"ok": True}
+
+    rest, _ = run_api_server([slow], rest_workers=4)
+
+    def one():
+        return _get(rest, "/slow")[0]
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(one) for _ in range(3)]
+        statuses = [f.result(timeout=5) for f in as_completed(futures)]
+    assert statuses == [200, 200, 200]

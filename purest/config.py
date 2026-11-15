@@ -33,6 +33,8 @@ class AppConfig:
     debug_quiet_paths: list[str] = field(default_factory=list)
     openapi_title: str = "REST API"
     openapi_version: str = "1.0.0"
+    # Max concurrent REST request threads (WebSocket pool stays separate).
+    rest_workers: int = 32
 
 
 _CONFIG: AppConfig | None = None
@@ -48,8 +50,11 @@ def configure(
     debug_quiet_paths: list[str] | None = None,
     openapi_title: str = "REST API",
     openapi_version: str = "1.0.0",
+    rest_workers: int = 32,
 ) -> AppConfig:
     global _CONFIG
+    if rest_workers < 1:
+        raise ValueError("rest_workers must be >= 1")
     _CONFIG = AppConfig(
         logger=logger if logger is not None else _NullLogger(),
         max_data_len_bytes=max_data_len_bytes,
@@ -59,6 +64,7 @@ def configure(
         debug_quiet_paths=list(debug_quiet_paths or []),
         openapi_title=openapi_title,
         openapi_version=openapi_version,
+        rest_workers=rest_workers,
     )
     return _CONFIG
 

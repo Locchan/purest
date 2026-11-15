@@ -62,6 +62,13 @@ def register_endpoints(modules) -> int:
 class ThreadingWSServer(NamedThreadingMixIn, HTTPServer):
     daemon_threads = True
     thread_prefix = "WS#"
+    max_workers = None  # unlimited WS accept threads
+
+
+class ThreadingRESTServer(NamedThreadingMixIn, HTTPServer):
+    daemon_threads = True
+    thread_prefix = "REST#"
+    max_workers = 32
 
 
 class APIServer(BaseHTTPRequestHandler):
@@ -292,6 +299,8 @@ def serve(
     ws_cls = ws_handler or WSServer
     ws_server = ThreadingWSServer((bind_host, ws_port), ws_cls)
     Thread(name="API-WS", target=ws_server.serve_forever, daemon=True).start()
-    logger.info(f"REST listening on port {rest_port} (single-threaded).")
+    rest_server = ThreadingRESTServer((bind_host, rest_port), rest_cls)
+    rest_server.max_workers = cfg.rest_workers
+    logger.info(f"REST listening on port {rest_port} (threaded, workers={cfg.rest_workers}).")
     logger.info(f"WebSocket listening on port {ws_port} (threaded).")
-    HTTPServer((bind_host, rest_port), rest_cls).serve_forever()
+    rest_server.serve_forever()

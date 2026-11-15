@@ -123,10 +123,13 @@ class SqliteAuthProvider(AuthProvider):
 
     def __init__(self, path: str = ":memory:", *, connect_args: dict | None = None):
         super().__init__()
+        import uuid
+
         self._path = path
         self._connect_args = dict(connect_args or {})
-        # Keep a single :memory: connection so create_all and sessions share the DB.
-        self._memory_conn = None
+        # Named shared-cache memory DB: safe across REST worker threads.
+        self._shared_mem_name = f"purest-{uuid.uuid4().hex}" if path == ":memory:" else None
+        self._keep_alive = None
 
     @property
     def dialect_name(self) -> str:
@@ -135,11 +138,18 @@ class SqliteAuthProvider(AuthProvider):
     def connect(self):
         import sqlite3
 
-        if self._path == ":memory:":
-            if self._memory_conn is None:
-                self._memory_conn = sqlite3.connect(self._path, check_same_thread=False, **self._connect_args)
-            return self._memory_conn
-        return sqlite3.connect(self._path, **self._connect_args)
+        args = {"check_same_thread": False, **self._connect_args}
+        if self._shared_mem_name is not None:
+            uri = f"file:{self._shared_mem_name}?mode=memory&cache=shared"
+            return sqlite3.connect(uri, uri=True, **args)
+        return sqlite3.connect(self._path, **args)
+
+    def get_engine(self, **engine_kwargs) -> Engine:
+        engine = super().get_engine(**engine_kwargs)
+        # Pin one connection so the shared in-memory DB is not dropped when idle.
+        if self._shared_mem_name is not None and self._keep_alive is None:
+            self._keep_alive = self.connect()
+        return engine
 
 
 def engine_from_url(url: str, **engine_kwargs) -> Engine:
