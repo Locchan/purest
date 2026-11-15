@@ -37,7 +37,7 @@ def register_endpoints(modules) -> int:
                 except AttributeError:
                     continue
 
-                is_ws = getattr(impl, "_purest_websocket", False) or getattr(impl, "_lrd_websocket", False)
+                is_ws = getattr(impl, "_purest_websocket", False)
                 dest = ws_endpoints if is_ws else endpoints
                 kind = "WS" if is_ws else amethod
                 logger.debug(f"Registering: {kind} - {endpoint_module.ENDP_PATH}")

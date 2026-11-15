@@ -2,9 +2,8 @@ from purest.config import get_config
 
 
 def _inherit_endp_flags(wrapper, wrapped):
-    if getattr(wrapped, "_purest_websocket", False) or getattr(wrapped, "_lrd_websocket", False):
+    if getattr(wrapped, "_purest_websocket", False):
         wrapper._purest_websocket = True
-        wrapper._lrd_websocket = True  # LoRaD registration still checks this name
 
 
 ###
@@ -144,5 +143,4 @@ def websocket(func):
         return {"rc": 101, "websocket": True, "done": True}
 
     wrp_ws._purest_websocket = True
-    wrp_ws._lrd_websocket = True
     return wrp_ws

@@ -12,7 +12,7 @@ _models_by_base: dict[int, tuple] = {}
 def create_mysql_auth_models(Base) -> tuple:
     """Bind api_user / api_group / api_token models onto the host DeclarativeBase.
 
-    Table names and columns match the historical LoRaD MySQL schema.
+    Table names: `api_user`, `api_group`, `api_token`.
     """
     key = id(Base)
     if key in _models_by_base:
