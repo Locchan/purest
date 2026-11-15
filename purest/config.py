@@ -34,7 +34,7 @@ class AppConfig:
     openapi_title: str = "REST API"
     openapi_version: str = "1.0.0"
     # Max concurrent REST request threads (WebSocket pool stays separate).
-    rest_workers: int = 32
+    rest_workers: int = 4
 
 
 _CONFIG: AppConfig | None = None
