@@ -5,9 +5,10 @@ from enum import IntEnum
 
 
 class LoginResult(IntEnum):
-    NO_SUCH_USER = 0
+    """Outcome of AuthBackend.login — failures are intentionally indistinguishable."""
+
+    FAILED = 0
     SUCCESS = 1
-    BAD_PASSWORD = 2
 
 
 class AuthBackend(ABC):

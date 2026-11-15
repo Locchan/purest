@@ -13,7 +13,7 @@ from purest.auth.backends import (
     create_mysql_auth_models,
     engine_from_url,
 )
-from purest.auth.hashing import hash_password
+from purest.auth.hashing import hash_password, needs_rehash, verify_password
 from purest.auth.sqlalchemy_backend import SqlAlchemyAuthBackend
 from purest.auth.sqlalchemy_models import GroupMixin, TokenMixin, UserMixin
 
@@ -37,4 +37,6 @@ __all__ = [
     "create_mysql_auth_models",
     "engine_from_url",
     "hash_password",
+    "needs_rehash",
+    "verify_password",
 ]

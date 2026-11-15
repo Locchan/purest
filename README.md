@@ -59,21 +59,21 @@ class Base(DeclarativeBase):
 backend = MysqlAuthBackend(
     Base,
     provider=MysqlAuthProvider("127.0.0.1", "appdb", "user", "secret"),
-    salt="…",
     token_ttl_min=1440,
 )
 
 # Or pass a host session factory (no provider):
-backend = MysqlAuthBackend(Base, session_factory=my_session_factory, salt="…", token_ttl_min=1440)
+backend = MysqlAuthBackend(Base, session_factory=my_session_factory, token_ttl_min=1440)
 
 # SQLite (stdlib sqlite3, same creator pattern):
 backend = SqliteAuthBackend(
     Base,
     provider=SqliteAuthProvider("auth.db"),
-    salt="…",
     token_ttl_min=1440,
 )
 ```
+
+Passwords are stored as salted **scrypt** (`hash_password` / `verify_password`). Optional `legacy_salt=` verifies old `sha512(password+salt)` hex digests and upgrades them on successful login. `login()` returns only `LoginResult.SUCCESS` or `LoginResult.FAILED` (no user-enumeration distinction).
 
 `OdbcAuthProvider(connection_string, dialect_name=…)` covers any other ODBC DSN. `PostgresqlAuthProvider` mirrors the MySQL helper.
 

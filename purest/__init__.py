@@ -1,5 +1,5 @@
 from purest.auth.backend import AuthBackend, LoginResult
-from purest.auth.hashing import hash_password
+from purest.auth.hashing import hash_password, verify_password
 from purest.config import configure, get_config
 from purest.server import APIServer, WSServer, register_endpoints, serve
 from purest.websocket import WebSocket, is_websocket_upgrade
@@ -21,6 +21,7 @@ __all__ = [
     "get_config",
     "hash_password",
     "is_websocket_upgrade",
+    "verify_password",
     "register_endpoints",
     "serve",
     "validate",

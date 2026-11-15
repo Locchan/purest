@@ -47,7 +47,6 @@ def sqlite_auth(DeclarativeBaseFactory):
     backend = SqliteAuthBackend(
         Base,
         provider=provider,
-        salt="test-salt-do-not-use-in-prod",
         token_ttl_min=60,
         bypass_cap="ALL",
         default_group_name="default",

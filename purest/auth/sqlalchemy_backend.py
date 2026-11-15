@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import delete, select
 
 from purest.auth.backend import AuthBackend, LoginResult
-from purest.auth.hashing import hash_password
+from purest.auth.hashing import hash_password, needs_rehash, verify_password_or_dummy
 
 
 class SqlAlchemyAuthBackend(AuthBackend):
@@ -21,8 +21,9 @@ class SqlAlchemyAuthBackend(AuthBackend):
         group_model,
         token_model,
         *,
-        salt: str,
         token_ttl_min: int,
+        legacy_salt: str | None = None,
+        salt: str | None = None,
         bypass_cap: str = "ALL",
         default_group_name: str = "default",
         default_capabilities: str = "BU",
@@ -32,7 +33,8 @@ class SqlAlchemyAuthBackend(AuthBackend):
         self._User = user_model
         self._Group = group_model
         self._Token = token_model
-        self._salt = salt
+        # ``salt`` kept as alias for hosts still passing the old kwarg name.
+        self._legacy_salt = legacy_salt if legacy_salt is not None else salt
         self._token_ttl_min = token_ttl_min
         self._bypass_cap = bypass_cap
         self._default_group_name = default_group_name
@@ -46,12 +48,14 @@ class SqlAlchemyAuthBackend(AuthBackend):
     def login(self, username: str, password: str) -> LoginResult:
         with self._session_factory() as session:
             user = session.scalar(select(self._User).where(self._User.name == username))
-            if user is None:
-                return LoginResult.NO_SUCH_USER
-            candidate = hash_password(password, self._salt)
-            if secrets.compare_digest(user.password_hash, candidate):
-                return LoginResult.SUCCESS
-            return LoginResult.BAD_PASSWORD
+            stored = None if user is None else user.password_hash
+            if not verify_password_or_dummy(password, stored, legacy_salt=self._legacy_salt):
+                return LoginResult.FAILED
+            # Upgrade legacy hashes to scrypt on successful login.
+            if needs_rehash(user.password_hash):
+                user.password_hash = hash_password(password)
+                session.commit()
+            return LoginResult.SUCCESS
 
     def validate_token(self, username: str, token: str) -> bool:
         with self._session_factory() as session:
@@ -63,7 +67,6 @@ class SqlAlchemyAuthBackend(AuthBackend):
                 return False
             if token_obj.user != user_obj.id:
                 return False
-            # Constant-time compare even though DB already filtered by equality.
             if not secrets.compare_digest(token_obj.token, token):
                 return False
             expires = token_obj.date_gen.replace(tzinfo=ZoneInfo("UTC")) + datetime.timedelta(
@@ -121,7 +124,7 @@ class SqlAlchemyAuthBackend(AuthBackend):
                 )
             new_user_obj = self._User(
                 name=username,
-                password_hash=hash_password(password, self._salt),
+                password_hash=hash_password(password),
                 group=default_group.id,
             )
             session.add(new_user_obj)

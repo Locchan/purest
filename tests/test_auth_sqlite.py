@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -8,6 +9,7 @@ from sqlalchemy import select
 
 from purest.auth import LoginResult, SqliteAuthBackend, SqliteAuthProvider, create_auth_models, hash_password
 from purest.auth.backends.sql import SqlAuthBackend
+from purest.auth.hashing import needs_rehash, verify_password
 
 
 def test_register_login_token_happy_path(sqlite_auth):
@@ -26,26 +28,57 @@ def test_register_duplicate_returns_false(sqlite_auth):
     b = sqlite_auth.backend
     assert b.register_user("alice", "password12") is True
     assert b.register_user("alice", "otherpass99") is False
-    # Original password still works
     assert b.login("alice", "password12") is LoginResult.SUCCESS
-    assert b.login("alice", "otherpass99") is LoginResult.BAD_PASSWORD
+    assert b.login("alice", "otherpass99") is LoginResult.FAILED
 
 
-def test_login_unknown_user_and_bad_password(sqlite_auth):
+def test_login_unknown_user_and_bad_password_are_indistinguishable(sqlite_auth):
     b = sqlite_auth.backend
-    assert b.login("nobody", "x") is LoginResult.NO_SUCH_USER
+    assert b.login("nobody", "x") is LoginResult.FAILED
     b.register_user("alice", "password12")
-    assert b.login("alice", "wrong") is LoginResult.BAD_PASSWORD
+    assert b.login("alice", "wrong") is LoginResult.FAILED
     assert b.login("alice", "password12") is LoginResult.SUCCESS
 
 
-def test_password_stored_as_salted_hash(sqlite_auth):
+def test_password_stored_as_scrypt(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
     with b._session_factory() as session:
         user = session.scalar(select(b.User).where(b.User.name == "alice"))
-        assert user.password_hash == hash_password("password12", "test-salt-do-not-use-in-prod")
+        assert user.password_hash.startswith("scrypt$")
+        assert verify_password("password12", user.password_hash)
         assert user.password_hash != "password12"
+
+
+def test_legacy_sha512_login_upgrades_hash(DeclarativeBaseFactory):
+    Base = DeclarativeBaseFactory()
+    provider = SqliteAuthProvider(":memory:")
+    create_auth_models(Base)
+    Base.metadata.create_all(provider.get_engine())
+    legacy_salt = "old-static-salt"
+    legacy = hashlib.sha512(b"password12" + legacy_salt.encode()).hexdigest()
+    b = SqliteAuthBackend(
+        Base,
+        provider=provider,
+        token_ttl_min=60,
+        legacy_salt=legacy_salt,
+    )
+    with b._session_factory() as session:
+        group = b.Group(name="default", capabilities="BU")
+        session.add(group)
+        session.commit()
+        group = session.scalar(select(b.Group).where(b.Group.name == "default"))
+        session.add(b.User(name="alice", password_hash=legacy, group=group.id))
+        session.commit()
+
+    assert needs_rehash(legacy) is True
+    assert b.login("alice", "password12") is LoginResult.SUCCESS
+    with b._session_factory() as session:
+        user = session.scalar(select(b.User).where(b.User.name == "alice"))
+        assert user.password_hash.startswith("scrypt$")
+        assert needs_rehash(user.password_hash) is False
+    # Still logs in after upgrade
+    assert b.login("alice", "password12") is LoginResult.SUCCESS
 
 
 def test_default_group_created_with_default_capabilities(sqlite_auth):
@@ -92,11 +125,9 @@ def test_short_ttl_expires_quickly(DeclarativeBaseFactory):
     provider = SqliteAuthProvider(":memory:")
     create_auth_models(Base)
     Base.metadata.create_all(provider.get_engine())
-    b = SqliteAuthBackend(Base, provider=provider, salt="s", token_ttl_min=0)
+    b = SqliteAuthBackend(Base, provider=provider, token_ttl_min=0)
     b.register_user("alice", "password12")
     token = b.issue_token("alice")
-    # TTL 0 minutes: anything issued in the past relative to "now" after replace fails.
-    # date_gen == now, expires = now + 0 → expires < now is False if equal; nudge date_gen back.
     with b._session_factory() as session:
         row = session.scalar(select(b.Token).where(b.Token.token == token))
         row.date_gen = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
@@ -133,7 +164,6 @@ def test_custom_bypass_cap_and_default_capabilities(DeclarativeBaseFactory):
     b = SqliteAuthBackend(
         Base,
         provider=provider,
-        salt="s",
         token_ttl_min=60,
         bypass_cap="SUPER",
         default_capabilities="READER",
@@ -157,7 +187,7 @@ def test_remove_user_invalidates_tokens_and_blocks_login(sqlite_auth):
     assert b.validate_token("alice", t1) is True
     assert b.remove_user("alice") is True
     assert b.remove_user("alice") is False
-    assert b.login("alice", "password12") is LoginResult.NO_SUCH_USER
+    assert b.login("alice", "password12") is LoginResult.FAILED
     assert b.validate_token("alice", t1) is False
     assert b.validate_token("alice", t2) is False
 
@@ -185,7 +215,7 @@ def test_create_auth_models_idempotent_per_base(DeclarativeBaseFactory):
 def test_sql_auth_backend_requires_session_or_provider(DeclarativeBaseFactory):
     Base = DeclarativeBaseFactory()
     with pytest.raises(ValueError, match="session_factory or an AuthProvider"):
-        SqlAuthBackend(Base, salt="s", token_ttl_min=1)
+        SqlAuthBackend(Base, token_ttl_min=1)
 
 
 def test_session_factory_escape_hatch(DeclarativeBaseFactory):
@@ -194,7 +224,7 @@ def test_session_factory_escape_hatch(DeclarativeBaseFactory):
     create_auth_models(Base)
     Base.metadata.create_all(provider.get_engine())
     factory = provider.session_factory()
-    b = SqliteAuthBackend(Base, session_factory=factory, salt="s", token_ttl_min=60)
+    b = SqliteAuthBackend(Base, session_factory=factory, token_ttl_min=60)
     assert b.register_user("alice", "password12") is True
     assert b.login("alice", "password12") is LoginResult.SUCCESS
 
@@ -212,9 +242,8 @@ def test_register_reuses_existing_default_group(sqlite_auth):
 
 
 def test_login_result_int_values():
-    assert int(LoginResult.NO_SUCH_USER) == 0
+    assert int(LoginResult.FAILED) == 0
     assert int(LoginResult.SUCCESS) == 1
-    assert int(LoginResult.BAD_PASSWORD) == 2
 
 
 def test_token_date_gen_timezone_aware_roundtrip(sqlite_auth):
@@ -223,7 +252,6 @@ def test_token_date_gen_timezone_aware_roundtrip(sqlite_auth):
     token = b.issue_token("alice")
     with b._session_factory() as session:
         row = session.scalar(select(b.Token).where(b.Token.token == token))
-        # SQLite often returns naive datetimes; validate_token adds UTC.
         assert row.date_gen.replace(tzinfo=ZoneInfo("UTC")) <= datetime.datetime.now(datetime.timezone.utc)
 
 
@@ -232,7 +260,7 @@ def test_capability_bypass_is_exact_token_not_substring(sqlite_auth):
     b.register_user("alice", "password12")
     with b._session_factory() as session:
         group = session.scalar(select(b.Group).where(b.Group.name == "default"))
-        group.capabilities = "FALL"  # must not match bypass_cap "ALL"
+        group.capabilities = "FALL"
         session.commit()
     assert b.check_capability("alice", "ADMIN") is False
     assert b.check_capability("alice", "FALL") is True
