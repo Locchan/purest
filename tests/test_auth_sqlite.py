@@ -12,6 +12,12 @@ from purest.auth.backends.sql import SqlAuthBackend
 from purest.auth.hashing import needs_rehash, verify_password
 
 
+def test_register_rejects_usernames_shorter_than_four(sqlite_auth):
+    b = sqlite_auth.backend
+    assert b.register_user("abc", "password12") is False
+    assert b.register_user("abcd", "password12") is True
+
+
 def test_register_login_token_happy_path(sqlite_auth):
     b = sqlite_auth.backend
     assert b.register_user("alice", "password12") is True
@@ -94,14 +100,14 @@ def test_default_group_created_with_default_capabilities(sqlite_auth):
 def test_validate_token_rejects_unknown_user_token_mismatch_and_garbage(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
-    b.register_user("bob", "password34")
+    b.register_user("bobby", "password34")
     alice_tok = b.issue_token("alice")
-    bob_tok = b.issue_token("bob")
+    bob_tok = b.issue_token("bobby")
 
     assert b.validate_token("alice", alice_tok) is True
-    assert b.validate_token("bob", bob_tok) is True
+    assert b.validate_token("bobby", bob_tok) is True
     assert b.validate_token("alice", bob_tok) is False
-    assert b.validate_token("bob", alice_tok) is False
+    assert b.validate_token("bobby", alice_tok) is False
     assert b.validate_token("alice", "0" * 32) is False
     assert b.validate_token("charlie", alice_tok) is False
 
@@ -232,12 +238,12 @@ def test_session_factory_escape_hatch(DeclarativeBaseFactory):
 def test_register_reuses_existing_default_group(sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
-    b.register_user("bob", "password34")
+    b.register_user("bobby", "password34")
     with b._session_factory() as session:
         groups = list(session.scalars(select(b.Group)).all())
         assert len(groups) == 1
         alice = session.scalar(select(b.User).where(b.User.name == "alice"))
-        bob = session.scalar(select(b.User).where(b.User.name == "bob"))
+        bob = session.scalar(select(b.User).where(b.User.name == "bobby"))
         assert alice.group == bob.group == groups[0].id
 
 

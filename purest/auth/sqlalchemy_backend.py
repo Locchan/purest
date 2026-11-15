@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 
 from purest.auth.backend import AuthBackend, LoginResult
 from purest.auth.hashing import hash_password, needs_rehash, verify_password_or_dummy
+from purest.auth.policy import is_valid_username
 
 
 class SqlAlchemyAuthBackend(AuthBackend):
@@ -105,6 +106,8 @@ class SqlAlchemyAuthBackend(AuthBackend):
         return token_str
 
     def register_user(self, username: str, password: str) -> bool:
+        if not is_valid_username(username):
+            return False
         with self._session_factory() as session:
             user_obj = session.scalar(select(self._User).where(self._User.name == username))
             if user_obj is not None:
