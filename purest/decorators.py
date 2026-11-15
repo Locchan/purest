@@ -1,3 +1,4 @@
+from purest.auth.identity import parse_credentials
 from purest.config import get_config
 
 
@@ -96,22 +97,16 @@ def auth(cap_required):
             backend = get_config().auth_backend
             if backend is None:
                 return {"rc": 500, "data": {"error": "Auth backend is not configured."}}
-            headers = dict(args[0]._headers)
-            if "Authorization" in headers:
-                auth_split = headers["Authorization"].split(",")
-                if len(auth_split) != 2:
-                    return {"rc": 400, "data": {"error": "Incorrect 'Authorization' header."}}
-                username = auth_split[0].strip()
-                token = auth_split[1].strip()
-                if backend.validate_token(username, token):
-                    if backend.check_capability(username, cap_required):
-                        return func(*args, **kwargs)
-                    else:
-                        return {"rc": 403, "data": {"error": "Insufficient permissions"}}
-                else:
-                    return {"rc": 401, "data": {"error": "Unauthorized"}}
-            else:
+            headers = args[0]
+            parsed = parse_credentials(headers)
+            if parsed is None:
                 return {"rc": 401, "data": {"error": "Unauthorized"}}
+            username, token = parsed
+            if backend.validate_token(username, token):
+                if backend.check_capability(username, cap_required):
+                    return func(*args, **kwargs)
+                return {"rc": 403, "data": {"error": "Insufficient permissions"}}
+            return {"rc": 401, "data": {"error": "Unauthorized"}}
 
         _inherit_endp_flags(wrp, func)
         return wrp

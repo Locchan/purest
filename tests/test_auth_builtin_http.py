@@ -14,6 +14,7 @@ from purest.auth.policy import (
     PUR_CAP_CREATE_USER,
     PUR_CAP_ROOT,
 )
+from tests.conftest import auth_cookie
 
 
 def _post(port, path, payload, headers=None):
@@ -63,7 +64,7 @@ def test_builtin_auth_login_create_user_and_prefix(run_api_server, sqlite_auth):
         rest,
         "/auth/create_user",
         {"username": "bobby", "password": "password34"},
-        headers={"Authorization": f"alice, {alice_token}"},
+        headers=auth_cookie("alice", alice_token),
     )
     assert status == 403
 
@@ -72,16 +73,18 @@ def test_builtin_auth_login_create_user_and_prefix(run_api_server, sqlite_auth):
         rest,
         "/auth/create_user",
         {"username": "bobby", "password": "password34"},
-        headers={"Authorization": f"root, {root_token}"},
+        headers=auth_cookie("root", root_token),
     )
     assert status == 200
     assert body == {"success": True}
 
-    status, body = _get(rest, "/auth/whoami", headers={"Authorization": f"root, {root_token}"})
+    status, body = _get(rest, "/auth/whoami", headers=auth_cookie("root", root_token))
     assert status == 200
     assert body["whoami"] == "root"
     assert PUR_CAP_ROOT in body["capabilities"]
     assert PUR_CAP_CREATE_USER in body["capabilities"]
+    assert "language" in body
+    assert body["language"] is None
 
     assert b.check_capability("root", PUR_CAP_CREATE_USER) is True
 
@@ -105,7 +108,7 @@ def test_builtin_set_password_self_and_admin(run_api_server, sqlite_auth):
         rest,
         "/auth/set_password",
         {"username": "alice", "password": "password99"},
-        headers={"Authorization": f"alice, {alice_token}"},
+        headers=auth_cookie("alice", alice_token),
     )
     assert status == 200
     assert body["success"] is True
@@ -119,7 +122,7 @@ def test_builtin_set_password_self_and_admin(run_api_server, sqlite_auth):
         rest,
         "/auth/set_password",
         {"username": "bobby", "password": "password55"},
-        headers={"Authorization": f"alice, {alice_token2}"},
+        headers=auth_cookie("alice", alice_token2),
     )
     assert status == 403
     assert b.validate_token("bobby", bobby_old) is True
@@ -135,7 +138,7 @@ def test_builtin_set_password_self_and_admin(run_api_server, sqlite_auth):
         rest,
         "/auth/set_password",
         {"username": "bobby", "password": "password55"},
-        headers={"Authorization": f"alice, {alice_token2}"},
+        headers=auth_cookie("alice", alice_token2),
     )
     assert status == 200
     assert b.validate_token("bobby", bobby_old) is False

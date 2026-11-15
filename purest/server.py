@@ -97,9 +97,10 @@ class APIServer(BaseHTTPRequestHandler):
             "Access-Control-Allow-Methods",
             "GET, POST, PUT, DELETE, UPDATE, OPTIONS",
         )
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Requested-With")
         self.send_header("Access-Control-Max-Age", "1728000")
         if origin != "*":
+            self.send_header("Access-Control-Allow-Credentials", "true")
             self.send_header("Vary", "Origin")
 
     def do_OPTIONS(self):

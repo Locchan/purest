@@ -38,7 +38,9 @@ def generate_swagger_path(anendpoint):
             }
 
             if getattr(anendpoint, "LOGIN_REQUIRED", False):
-                operation["security"] = [{"AuthHeader": []}]
+                operation["security"] = [
+                    {"AuthUserCookie": [], "AuthTokenCookie": []}
+                ]
 
             path_item[method] = operation
 
@@ -60,12 +62,18 @@ def generate_full_openapi_spec(endpoint_modules, title=None, version=None):
         "paths": paths,
         "components": {
             "securitySchemes": {
-                "AuthHeader": {
+                "AuthUserCookie": {
                     "type": "apiKey",
-                    "in": "header",
-                    "name": "Authorization",
-                    "description": "Format: `username, token`",
-                }
+                    "in": "cookie",
+                    "name": cfg.auth_cookie_user,
+                    "description": "Authenticated username cookie",
+                },
+                "AuthTokenCookie": {
+                    "type": "apiKey",
+                    "in": "cookie",
+                    "name": cfg.auth_cookie_token,
+                    "description": "Session token cookie",
+                },
             }
         },
     }

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from purest.auth.identity import DEFAULT_AUTH_COOKIE_TOKEN, DEFAULT_AUTH_COOKIE_USER
+
 
 class _NullLogger:
     def debug(self, *args, **kwargs):
@@ -38,6 +40,9 @@ class AppConfig:
     # Builtin /auth/* user endpoints (login, create_user, remove, …).
     builtin_auth_endpoints: bool = True
     auth_endpoint_prefix: str = "/auth/"
+    # Session cookies read by @auth / auth_username (not Authorization header).
+    auth_cookie_user: str = DEFAULT_AUTH_COOKIE_USER
+    auth_cookie_token: str = DEFAULT_AUTH_COOKIE_TOKEN
 
 
 _CONFIG: AppConfig | None = None
@@ -56,6 +61,8 @@ def configure(
     rest_workers: int = 4,
     builtin_auth_endpoints: bool = True,
     auth_endpoint_prefix: str = "/auth/",
+    auth_cookie_user: str = DEFAULT_AUTH_COOKIE_USER,
+    auth_cookie_token: str = DEFAULT_AUTH_COOKIE_TOKEN,
 ) -> AppConfig:
     global _CONFIG
     if rest_workers < 1:
@@ -72,6 +79,8 @@ def configure(
         rest_workers=rest_workers,
         builtin_auth_endpoints=builtin_auth_endpoints,
         auth_endpoint_prefix=auth_endpoint_prefix,
+        auth_cookie_user=auth_cookie_user,
+        auth_cookie_token=auth_cookie_token,
     )
     return _CONFIG
 

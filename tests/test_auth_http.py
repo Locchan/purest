@@ -6,7 +6,8 @@ import json
 from http.client import HTTPConnection
 
 from purest import api_endp, auth, validate
-from purest.auth import LoginResult
+from purest.auth import LoginResult, auth_username
+from tests.conftest import auth_cookie
 
 
 def _post(port, path, payload, headers=None):
@@ -86,9 +87,7 @@ def _auth_modules(backend):
         @auth("PUR_CAP_BASIC_USER")
         @api_endp
         def impl_GET(headers):
-            # headers is email.message.Message
-            auth_hdr = headers.get("Authorization") or ""
-            return {"user": auth_hdr.split(",")[0].strip()}
+            return {"user": auth_username(headers)}
 
     class admin_ping:
         ENDP_PATH = "/admin/ping"
@@ -122,11 +121,11 @@ def test_full_auth_lifecycle_http(run_api_server, sqlite_auth):
     assert len(root_token) == 32
 
     # whoami with token
-    status, body = _get(rest, "/user/whoami", headers={"Authorization": f"root, {root_token}"})
+    status, body = _get(rest, "/user/whoami", headers=auth_cookie("root", root_token))
     assert status == 200
     assert body == {"user": "root"}
 
-    status, body = _get(rest, "/admin/ping", headers={"Authorization": f"root, {root_token}"})
+    status, body = _get(rest, "/admin/ping", headers=auth_cookie("root", root_token))
     assert status == 200
 
     # Admin registers a basic user
@@ -134,7 +133,7 @@ def test_full_auth_lifecycle_http(run_api_server, sqlite_auth):
         rest,
         "/user/register",
         {"username": "alice", "password": "password12"},
-        headers={"Authorization": f"root, {root_token}"},
+        headers=auth_cookie("root", root_token),
     )
     assert status == 200
     assert body == {"success": True}
@@ -144,7 +143,7 @@ def test_full_auth_lifecycle_http(run_api_server, sqlite_auth):
         rest,
         "/user/register",
         {"username": "alice", "password": "password12"},
-        headers={"Authorization": f"root, {root_token}"},
+        headers=auth_cookie("root", root_token),
     )
     assert status == 409
 
@@ -153,11 +152,11 @@ def test_full_auth_lifecycle_http(run_api_server, sqlite_auth):
     assert status == 200
     alice_token = body["token"]
 
-    status, body = _get(rest, "/user/whoami", headers={"Authorization": f"alice, {alice_token}"})
+    status, body = _get(rest, "/user/whoami", headers=auth_cookie("alice", alice_token))
     assert status == 200
     assert body == {"user": "alice"}
 
-    status, body = _get(rest, "/admin/ping", headers={"Authorization": f"alice, {alice_token}"})
+    status, body = _get(rest, "/admin/ping", headers=auth_cookie("alice", alice_token))
     assert status == 403
 
     # Alice cannot register others
@@ -165,7 +164,7 @@ def test_full_auth_lifecycle_http(run_api_server, sqlite_auth):
         rest,
         "/user/register",
         {"username": "eve", "password": "password99"},
-        headers={"Authorization": f"alice, {alice_token}"},
+        headers=auth_cookie("alice", alice_token),
     )
     assert status == 403
 
@@ -174,18 +173,18 @@ def test_full_auth_lifecycle_http(run_api_server, sqlite_auth):
         rest,
         "/user/remove",
         {"username": "alice"},
-        headers={"Authorization": f"root, {root_token}"},
+        headers=auth_cookie("root", root_token),
     )
     assert status == 200
 
-    status, body = _get(rest, "/user/whoami", headers={"Authorization": f"alice, {alice_token}"})
+    status, body = _get(rest, "/user/whoami", headers=auth_cookie("alice", alice_token))
     assert status == 401
 
     status, body = _post(rest, "/user/auth", {"username": "alice", "password": "password12"})
     assert status == 401
 
 
-def test_auth_header_whitespace_tolerated(run_api_server, sqlite_auth):
+def test_auth_cookie_whitespace_tolerated(run_api_server, sqlite_auth):
     b = sqlite_auth.backend
     b.register_user("alice", "password12")
     token = b.issue_token("alice")
@@ -200,6 +199,10 @@ def test_auth_header_whitespace_tolerated(run_api_server, sqlite_auth):
             return {"ok": True}
 
     rest, _ = run_api_server([whoami], auth_backend=b)
-    status, body = _get(rest, "/who", headers={"Authorization": f"  alice  ,  {token}  "})
+    status, body = _get(
+        rest,
+        "/who",
+        headers={"Cookie": f"purest_user=  alice  ; purest_token=  {token}  "},
+    )
     assert status == 200
     assert body == {"ok": True}

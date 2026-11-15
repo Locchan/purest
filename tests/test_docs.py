@@ -46,5 +46,11 @@ def test_openapi_spec_shape():
     assert "/sample" in spec["paths"]
     assert "get" in spec["paths"]["/sample"]
     assert "post" in spec["paths"]["/sample"]
-    assert spec["paths"]["/sample"]["get"]["security"] == [{"AuthHeader": []}]
-    assert "AuthHeader" in spec["components"]["securitySchemes"]
+    assert spec["paths"]["/sample"]["get"]["security"] == [
+        {"AuthUserCookie": [], "AuthTokenCookie": []}
+    ]
+    schemes = spec["components"]["securitySchemes"]
+    assert "AuthUserCookie" in schemes
+    assert "AuthTokenCookie" in schemes
+    assert schemes["AuthUserCookie"]["in"] == "cookie"
+    assert schemes["AuthTokenCookie"]["in"] == "cookie"

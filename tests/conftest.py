@@ -63,8 +63,29 @@ def configured_sqlite_auth(sqlite_auth):
 
 
 def make_headers(**headers) -> SimpleNamespace:
-    """stdlib-like headers object: auth decorator uses dict(headers._headers)."""
+    """stdlib-like headers object: auth reads Cookie via headers._headers."""
     return SimpleNamespace(_headers=list(headers.items()))
+
+
+def auth_cookie(
+    username: str,
+    token: str,
+    *,
+    user_cookie: str = "purest_user",
+    token_cookie: str = "purest_token",
+) -> dict[str, str]:
+    """Cookie header map for authenticated HTTP / decorator tests."""
+    return {"Cookie": f"{user_cookie}={username}; {token_cookie}={token}"}
+
+
+def make_auth_headers(
+    username: str,
+    token: str,
+    *,
+    user_cookie: str = "purest_user",
+    token_cookie: str = "purest_token",
+) -> SimpleNamespace:
+    return make_headers(**auth_cookie(username, token, user_cookie=user_cookie, token_cookie=token_cookie))
 
 
 @pytest.fixture

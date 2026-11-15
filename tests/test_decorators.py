@@ -1,7 +1,7 @@
 import pytest
 
 from purest import api_endp, auth, configure, feat_req, validate, websocket
-from tests.conftest import make_headers
+from tests.conftest import make_auth_headers, make_headers
 
 
 def test_api_endp_wraps_dict():
@@ -150,24 +150,27 @@ def test_auth_decorator_matrix(configured_sqlite_auth):
     def need_admin(headers):
         return {"admin": True}
 
-    # missing Authorization
+    # missing cookies
     assert need_bu(make_headers())["rc"] == 401
 
-    # malformed
-    assert need_bu(make_headers(Authorization="only-one-part"))["rc"] == 400
-    assert need_bu(make_headers(Authorization="a, b, c"))["rc"] == 400
+    # Authorization header is ignored
+    assert need_bu(make_headers(Authorization=f"alice, {token}"))["rc"] == 401
+
+    # incomplete cookies
+    assert need_bu(make_headers(Cookie=f"purest_token={token}"))["rc"] == 401
+    assert need_bu(make_headers(Cookie="purest_user=alice"))["rc"] == 401
 
     # bad token
-    assert need_bu(make_headers(Authorization="alice, deadbeef"))["rc"] == 401
+    assert need_bu(make_auth_headers("alice", "deadbeef"))["rc"] == 401
 
     # wrong user for token
-    assert need_bu(make_headers(Authorization=f"bob, {token}"))["rc"] == 401
+    assert need_bu(make_auth_headers("bob", token))["rc"] == 401
 
     # success for BU
-    assert need_bu(make_headers(Authorization=f"alice, {token}"))["rc"] == 200
+    assert need_bu(make_auth_headers("alice", token))["rc"] == 200
 
     # insufficient capability
-    assert need_admin(make_headers(Authorization=f"alice, {token}"))["rc"] == 403
+    assert need_admin(make_auth_headers("alice", token))["rc"] == 403
 
 
 def test_auth_without_backend_configured():
@@ -178,4 +181,4 @@ def test_auth_without_backend_configured():
     def impl(headers):
         return {}
 
-    assert impl(make_headers(Authorization="u, t"))["rc"] == 500
+    assert impl(make_auth_headers("u", "t"))["rc"] == 500

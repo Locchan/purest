@@ -17,7 +17,11 @@ from purest.auth.backends import (
 )
 from purest.auth.endpoints import build_auth_endpoints, normalize_auth_prefix
 from purest.auth.hashing import hash_password, needs_rehash, verify_password
-from purest.auth.identity import auth_username, parse_authorization
+from purest.auth.identity import (
+    auth_username,
+    parse_authorization,
+    parse_credentials,
+)
 from purest.auth.policy import (
     CAP_ADMIN,
     CAP_BASIC_USER,
@@ -84,5 +88,6 @@ __all__ = [
     "needs_rehash",
     "normalize_auth_prefix",
     "parse_authorization",
+    "parse_credentials",
     "verify_password",
 ]

@@ -8,6 +8,7 @@ import pytest
 
 from purest import api_endp, auth, feat_req, register_endpoints, validate, websocket
 from purest import server as server_mod
+from tests.conftest import auth_cookie
 
 
 def _get(port, path, headers=None):
@@ -215,13 +216,13 @@ def test_http_auth_and_feature_gates(run_api_server, sqlite_auth):
     assert status == 401
 
     status, _, body = _get(
-        rest, "/secret", headers={"Authorization": f"alice, {token}"}
+        rest, "/secret", headers=auth_cookie("alice", token)
     )
     assert status == 200
     assert json.loads(body) == {"secret": True}
 
     status, _, body = _get(
-        rest, "/admin", headers={"Authorization": f"alice, {token}"}
+        rest, "/admin", headers=auth_cookie("alice", token)
     )
     assert status == 403
 

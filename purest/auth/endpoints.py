@@ -135,7 +135,9 @@ def build_auth_endpoints(
     class whoami:
         ENDP_PATH = f"{p}whoami"
         LOGIN_REQUIRED = True
-        DOCSTRING = {"GET": "Return the authenticated username and capabilities."}
+        DOCSTRING = {
+            "GET": "Return the authenticated username, capabilities, and language (if known)."
+        }
 
         @staticmethod
         @auth(user_cap)
@@ -144,7 +146,13 @@ def build_auth_endpoints(
             backend = _backend()
             username = auth_username(headers)
             caps = backend.get_capabilities(username) or []
-            return {"whoami": username, "capabilities": caps}
+            payload = {"whoami": username, "capabilities": caps}
+            get_language = getattr(backend, "get_language", None)
+            if callable(get_language):
+                payload["language"] = get_language(username)
+            else:
+                payload["language"] = None
+            return payload
 
     class users:
         ENDP_PATH = f"{p}users"
