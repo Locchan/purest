@@ -192,6 +192,57 @@ def test_http_ws_path_on_rest_returns_426(run_api_server):
     status, _, body = _get(rest, "/stream")
     assert status == 426
     assert str(ws_port).encode() in body or b"WebSocket" in body
+    # Query string must still resolve to the WS route on REST (426, not 404).
+    status, _, _ = _get(rest, "/stream?camera=1")
+    assert status == 426
+
+
+def test_ws_upgrade_matches_path_with_query(run_api_server):
+    """WS lookup strips ?query so /stream?camera=1 hits ENDP_PATH=/stream."""
+    import socket
+    import time
+
+    seen = {"path": None}
+
+    class stream:
+        ENDP_PATH = "/stream"
+
+        @staticmethod
+        @websocket
+        def impl_GET(headers, ws):
+            seen["path"] = ws.request.path
+            ws.send({"ok": True})
+
+    _, ws_port = run_api_server([stream])
+    req = (
+        "GET /stream?camera=cam1 HTTP/1.1\r\n"
+        "Host: 127.0.0.1\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "\r\n"
+    ).encode("ascii")
+    sock = socket.create_connection(("127.0.0.1", ws_port), timeout=5)
+    try:
+        sock.sendall(req)
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            chunk = sock.recv(4096)
+            assert chunk, "connection closed before handshake"
+            buf += chunk
+        assert buf.startswith(b"HTTP/1.1 101"), buf[:200]
+        deadline = time.time() + 2
+        while seen["path"] is None and time.time() < deadline:
+            time.sleep(0.05)
+            try:
+                sock.recv(4096)
+            except socket.timeout:
+                pass
+    finally:
+        sock.close()
+    assert seen["path"] is not None
+    assert "camera=cam1" in seen["path"]
 
 
 def test_http_auth_and_feature_gates(run_api_server, sqlite_auth):

@@ -265,9 +265,11 @@ class WSServer(APIServer):
         try:
             self._apply_real_ip()
             real_ip = self.headers.get("X-Real-IP") or self.client_address[0]
-            fn = ws_endpoints.get("GET", {}).get(self.path)
+            # Match on path only so ?query does not 404 registered WS routes.
+            path = urlsplit(self.path).path
+            fn = ws_endpoints.get("GET", {}).get(path)
             if fn is None:
-                self.error(404, f"No such WebSocket: '{self.path}'")
+                self.error(404, f"No such WebSocket: '{path}'")
                 logger.info(f"[{real_ip}] - WS {self.path}: 404")
                 return
             try:
